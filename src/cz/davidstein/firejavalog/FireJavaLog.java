@@ -23,7 +23,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
@@ -42,6 +41,7 @@ public class FireJavaLog {
     public static final int T_LOGTODATABASE = 1;
     public static final int T_LOGTOFILE = 2;
     public static final int T_LOGTOCONSOLE = 3;
+    private static final int T_LOGTOTEMPFILE = 4;
     public static final int L_LOG = 1;
     public static final int L_WARN = 2;
     public static final int L_SEVERE = 3;
@@ -55,7 +55,7 @@ public class FireJavaLog {
     private String databasePass;
 
     //temp log variables
-    private final String tempLogFile = "temp_log.json";
+    private final String tempLogFile = "temp_log.log";
 
     //file log variables
     private String logFile = "log.log";
@@ -110,31 +110,50 @@ public class FireJavaLog {
      * @throws SQLException 
      */
     //SQLException - remove
-    public boolean log(String text, int severe) throws SQLException {
+    public void log(String text, int severe, int logType) throws SQLException {
         switch (this.logType) {
             case FireJavaLog.T_LOGTODATABASE:
                 logToDatabase(text, severe);
+                logTempFileToDatabase();
                 break;
             case FireJavaLog.T_LOGTOFILE:
                 ArrayList<String> logToFile = new ArrayList<>();
                 logToFile.add(this.prepareStringToLog(text, severe));
                 this.writeToFile(this.logFile, logToFile);
                 break;
+            case FireJavaLog.T_LOGTOTEMPFILE:
+                ArrayList<String> logToTempFile = new ArrayList<>();
+                logToTempFile.add(this.prepareStringToLog(text, severe));
+                this.writeToFile(this.tempLogFile, logToTempFile);
+                break;
             case FireJavaLog.T_LOGTOCONSOLE:
-                return true;
+                break;
             default:
                 break;
         }
-        return false;
+    }
+    
+    /**
+     * Log some data to File/Database/Console
+     * 
+     * @param text
+     * @param severe
+     * @return
+     * @throws SQLException 
+     */
+    //SQLException - remove
+    public void log(String text, int severe) throws SQLException {
+        this.log(text, severe, this.logType);
     }
 
+    
     private void logToDatabase(String text, int severe) throws SQLException {
         try {
             //connect to database
             this.connectToDatabase();
             //log proccess
             if (this.con == null) {
-                logToTempFile(text, severe);
+                this.log(text, severe, FireJavaLog.T_LOGTOTEMPFILE);
             } else {
                 //write log to table
                 Statement stm = con.createStatement();
@@ -147,35 +166,10 @@ public class FireJavaLog {
             }
             //disconnect from database
         } catch (SQLException ex) {
-            //TODO: use log from this lib
+            this.log(text, severe, FireJavaLog.T_LOGTOTEMPFILE);
             throw ex;
         }
     }
-
-    private void connectToDatabase() throws SQLException {
-        try {
-            //connect to database
-            this.con = DriverManager.getConnection("jdbc:mysql://" + this.databaseHost + ":3306/" + this.databaseDatabase, databaseUser, databasePass);
-        } catch (SQLException ex) {
-            //TODO: use log from this lib
-            throw ex;
-        }
-    }
-
-    private void logToTempFile(String text, int severe) {
-
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    private void disconnectFromDatabase() throws SQLException {
-        try {
-            this.con.close();
-        } catch (SQLException ex) {
-            //TODO: use log from this lib
-            throw ex;
-        }
-    }
-
     /**
      *
      *
@@ -240,6 +234,34 @@ public class FireJavaLog {
         }
 
         return content;
+    }
+
+    
+    private void connectToDatabase() throws SQLException {
+        try {
+            //connect to database
+            this.con = DriverManager.getConnection("jdbc:mysql://" + this.databaseHost + ":3306/" + this.databaseDatabase, databaseUser, databasePass);
+        } catch (SQLException ex) {
+            //TODO: use log from this lib
+            throw ex;
+        }
+    }
+
+
+    private void disconnectFromDatabase() throws SQLException {
+        try {
+            this.con.close();
+        } catch (SQLException ex) {
+            //TODO: use log from this lib
+            throw ex;
+        }
+    }
+
+    private void logTempFileToDatabase() {
+        ArrayList<String> readFromFile = this.readFromFile(this.tempLogFile);
+        for(String line : readFromFile){
+            //TODO iterate all lines and remove lines from temp file
+        }
     }
 
 
