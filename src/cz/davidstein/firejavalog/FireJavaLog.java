@@ -17,6 +17,7 @@ package cz.davidstein.firejavalog;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -28,8 +29,7 @@ import java.sql.Statement;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.GregorianCalendar;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.concurrent.Executors;
 
 /**
  *
@@ -84,37 +84,46 @@ public class FireJavaLog {
         this.databasePass = databasePass;
     }
 
+    /**
+     * File log constructor with prepend date selector
+     *
+     * @param filename
+     * @param prependDate
+     */
     public FireJavaLog(String filename, Boolean prependDate) {
         if (prependDate) {
             //prepare date format
             SimpleDateFormat formatToLog = new SimpleDateFormat("yyyy-MM-dd");
             GregorianCalendar gcNow = new GregorianCalendar();
             String mysqlDateFormat = formatToLog.format(gcNow.getTime());
-            this.logFile=mysqlDateFormat+"-"+filename;
-        }else{
-            this.logFile=filename;
+            this.logFile = mysqlDateFormat + "-" + filename;
+        } else {
+            this.logFile = filename;
         }
         this.logType = FireJavaLog.T_LOGTOFILE;
     }
-    
-    public FireJavaLog(String filename){
-        this(filename,Boolean.TRUE);
+
+    /**
+     * File log constructor with prepend actual date
+     *
+     * @param filename
+     */
+    public FireJavaLog(String filename) {
+        this(filename, Boolean.TRUE);
     }
 
     /**
-     * Log some data to File/Database/Console
-     * 
+     * Log some data to File/Database/Console with logType selector
+     *
      * @param text
      * @param severe
-     * @return
-     * @throws SQLException 
+     * @throws SQLException
      */
     //SQLException - remove
-    public void log(String text, int severe, int logType) throws SQLException {
-        switch (this.logType) {
+    public void log(String text, int severe, int logType, String datetime) {
+        switch (logType) {
             case FireJavaLog.T_LOGTODATABASE:
-                logToDatabase(text, severe);
-                logTempFileToDatabase();
+                logToDatabase(datetime, text, severe);
                 break;
             case FireJavaLog.T_LOGTOFILE:
                 ArrayList<String> logToFile = new ArrayList<>();
@@ -132,44 +141,42 @@ public class FireJavaLog {
                 break;
         }
     }
-    
-    /**
-     * Log some data to File/Database/Console
-     * 
-     * @param text
-     * @param severe
-     * @return
-     * @throws SQLException 
-     */
-    //SQLException - remove
-    public void log(String text, int severe) throws SQLException {
-        this.log(text, severe, this.logType);
+
+    public void log(String text, int severe, int logType) {
+        this.log(text, severe, logType, this.timeInMysqlFormat());
     }
 
-    
-    private void logToDatabase(String text, int severe) throws SQLException {
+    /**
+     * Log some data to File/Database/Console
+     *
+     * @param text
+     * @param severe
+     */
+    //SQLException - remove
+    public void log(String text, int severe) {
+        this.log(text, severe, this.logType, this.timeInMysqlFormat());
+    }
+
+    private void logToDatabase(String date, String text, int severe) {
         try {
             //connect to database
             this.connectToDatabase();
-            //log proccess
-            if (this.con == null) {
-                this.log(text, severe, FireJavaLog.T_LOGTOTEMPFILE);
-            } else {
-                //write log to table
-                Statement stm = con.createStatement();
-                String query = "INSERT INTO " + this.databaseTable + "(severe,date,text) VALUES("
-                        + severe + ","
-                        + "NOW(),\" "
-                        + text + "\");";
-                int result = stm.executeUpdate(query);
-                this.disconnectFromDatabase();
-            }
+            //write log to table
+            Statement stm = con.createStatement();
+            String query = "INSERT INTO " + this.databaseTable + "(severe,date,text) VALUES("
+                    + severe + ",\""
+                    + date + "\",\""
+                    + text.replaceAll("\"", "\\\\\"")
+                    + "\");";
+            int result = stm.executeUpdate(query);
+            //logTempFileToDatabase();
+            this.disconnectFromDatabase();
             //disconnect from database
         } catch (SQLException ex) {
-            this.log(text, severe, FireJavaLog.T_LOGTOTEMPFILE);
-            throw ex;
+            this.log(ex.getMessage(), FireJavaLog.L_SEVERE, FireJavaLog.T_LOGTOTEMPFILE);
         }
     }
+
     /**
      *
      *
@@ -178,31 +185,26 @@ public class FireJavaLog {
      *
      */
     private String prepareStringToLog(String text, int severe) {
-        //prepare date format
-        SimpleDateFormat formatMysql = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        GregorianCalendar gcNow = new GregorianCalendar();
-        String mysqlDateFormat = formatMysql.format(gcNow.getTime());
-
-        return mysqlDateFormat + ";" + severe + ";" + text;
+        return this.timeInMysqlFormat() + ";" + severe + ";" + text;
     }
 
     private void writeToFile(String file, ArrayList<String> content) {
         try {
             // Assume default encoding.
-            FileWriter fileWriter = new FileWriter(file,true);
+            FileWriter fileWriter = new FileWriter(file, true);
 
             // Always wrap FileWriter in BufferedWriter.
             BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
 
             //iterate throught content and write it to file
             for (String temp : content) {
-                bufferedWriter.write(temp);
+                bufferedWriter.write(temp.replace("\n", "").replace("\r", ""));
                 bufferedWriter.newLine();
             }
             // Always close files.
             bufferedWriter.close();
         } catch (IOException ex) {
-            Logger.getLogger(FireJavaLog.class.getName()).log(Level.SEVERE, null, ex);
+            this.log(ex.getMessage(), FireJavaLog.L_SEVERE, FireJavaLog.T_LOGTOTEMPFILE);
         }
 
     }
@@ -228,41 +230,67 @@ public class FireJavaLog {
             bufferedReader.close();
 
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(FireJavaLog.class.getName()).log(Level.SEVERE, null, ex);
+            this.log(ex.getMessage(), FireJavaLog.L_SEVERE, FireJavaLog.T_LOGTOTEMPFILE);
         } catch (IOException ex) {
-            Logger.getLogger(FireJavaLog.class.getName()).log(Level.SEVERE, null, ex);
+            this.log(ex.getMessage(), FireJavaLog.L_SEVERE, FireJavaLog.T_LOGTOTEMPFILE);
         }
 
         return content;
     }
 
-    
     private void connectToDatabase() throws SQLException {
         try {
             //connect to database
             this.con = DriverManager.getConnection("jdbc:mysql://" + this.databaseHost + ":3306/" + this.databaseDatabase, databaseUser, databasePass);
+           
+            
         } catch (SQLException ex) {
-            //TODO: use log from this lib
-            throw ex;
+            throw ex;    
         }
     }
-
 
     private void disconnectFromDatabase() throws SQLException {
         try {
             this.con.close();
         } catch (SQLException ex) {
-            //TODO: use log from this lib
             throw ex;
         }
     }
 
     private void logTempFileToDatabase() {
-        ArrayList<String> readFromFile = this.readFromFile(this.tempLogFile);
-        for(String line : readFromFile){
-            //TODO iterate all lines and remove lines from temp file
+        File f = new File(this.tempLogFile);
+        if (f.exists() && !f.isDirectory()) {
+            ArrayList<String> readFromFile = this.readFromFile(this.tempLogFile);
+            this.emptyFile(this.tempLogFile);
+            for (String line : readFromFile) {
+                String[] parts = line.split(";");
+                String date = parts[0];
+                String severe = parts[1];
+                String text = parts[2];
+                //supply all arguments
+                this.log(text, Integer.parseInt(severe), FireJavaLog.T_LOGTODATABASE, date);
+            }
+        } else {
+            emptyFile(this.tempLogFile);
         }
     }
 
+    private void emptyFile(String filename) {
+        FileWriter fileWriter;
+        try {
+            fileWriter = new FileWriter(filename, true);
+            fileWriter.close();
+        } catch (IOException ex) {
+            this.log(ex.getMessage(), FireJavaLog.L_SEVERE, FireJavaLog.T_LOGTOTEMPFILE);
+        }
+    }
+
+    private String timeInMysqlFormat() {
+        //prepare date format
+        SimpleDateFormat formatMysql = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        GregorianCalendar gcNow = new GregorianCalendar();
+        String mysqlDateFormat = formatMysql.format(gcNow.getTime());
+        return mysqlDateFormat;
+    }
 
 }
