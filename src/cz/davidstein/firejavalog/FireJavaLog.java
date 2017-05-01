@@ -29,7 +29,6 @@ import java.sql.Statement;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.GregorianCalendar;
-import java.util.concurrent.Executors;
 
 /**
  *
@@ -67,13 +66,13 @@ public class FireJavaLog {
     private Connection con = null;
 
     /**
-     * Database constructor
+     * Constructor with database connection
      *
-     * @param databaseTable
-     * @param databaseDatabase
-     * @param databaseHost
-     * @param databaseUser
-     * @param databasePass
+     * @param databaseTable database table name
+     * @param databaseDatabase database name
+     * @param databaseHost database host
+     * @param databaseUser dataabase user
+     * @param databasePass database password
      */
     public FireJavaLog(String databaseTable, String databaseDatabase, String databaseHost, String databaseUser, String databasePass) {
         this.logType = FireJavaLog.T_LOGTODATABASE;
@@ -87,8 +86,8 @@ public class FireJavaLog {
     /**
      * File log constructor with prepend date selector
      *
-     * @param filename
-     * @param prependDate
+     * @param filename log file name
+     * @param prependDate prepend actual date to log file name
      */
     public FireJavaLog(String filename, Boolean prependDate) {
         if (prependDate) {
@@ -106,7 +105,7 @@ public class FireJavaLog {
     /**
      * File log constructor with prepend actual date
      *
-     * @param filename
+     * @param filename log file name
      */
     public FireJavaLog(String filename) {
         this(filename, Boolean.TRUE);
@@ -115,11 +114,13 @@ public class FireJavaLog {
     /**
      * Log some data to File/Database/Console with logType selector
      *
-     * @param text
-     * @param severe
-     * @throws SQLException
+     * @param text text to log
+     * @param severe log severe type use static constants FireJavaLog.
+     * @param logType type of log database/file/temp use static constants
+     * FireJavaLog.
+     * @param datetime current date time in mysql format use public String
+     * timeInMysqlFormat()
      */
-    //SQLException - remove
     public void log(String text, int severe, int logType, String datetime) {
         switch (logType) {
             case FireJavaLog.T_LOGTODATABASE:
@@ -142,6 +143,14 @@ public class FireJavaLog {
         }
     }
 
+    /**
+     * Log some data to File/Database/Console with logType selector
+     *
+     * @param text text to log
+     * @param severe log severe type use static constants FireJavaLog.
+     * @param logType type of log database/file/temp use static constants
+     * FireJavaLog.
+     */
     public void log(String text, int severe, int logType) {
         this.log(text, severe, logType, this.timeInMysqlFormat());
     }
@@ -149,14 +158,20 @@ public class FireJavaLog {
     /**
      * Log some data to File/Database/Console
      *
-     * @param text
-     * @param severe
+     * @param text text to log
+     * @param severe log severe type use static constants FireJavaLog.
      */
-    //SQLException - remove
     public void log(String text, int severe) {
         this.log(text, severe, this.logType, this.timeInMysqlFormat());
     }
 
+    /**
+     * Log data to database
+     * 
+     * @param date current date time in mysql format use public String
+     * @param text text to log
+     * @param severe log severe type use static constants FireJavaLog.
+     */
     private void logToDatabase(String date, String text, int severe) {
         try {
             //connect to database
@@ -169,7 +184,7 @@ public class FireJavaLog {
                     + text.replaceAll("\"", "\\\\\"")
                     + "\");";
             int result = stm.executeUpdate(query);
-            //logTempFileToDatabase();
+            logTempFileToDatabase();
             this.disconnectFromDatabase();
             //disconnect from database
         } catch (SQLException ex) {
@@ -184,10 +199,24 @@ public class FireJavaLog {
      *
      *
      */
+    
+    /**
+     * Prepare string to log in file. Serialize text, severe and date.
+     * 
+     * @param text text to log
+     * @param severe log severe type use static constants FireJavaLog.
+     * @return serialized log text
+     */
     private String prepareStringToLog(String text, int severe) {
         return this.timeInMysqlFormat() + ";" + severe + ";" + text;
     }
 
+    /**
+     * Write data to file
+     * 
+     * @param file filename
+     * @param content arrayList<String> every string is one line
+     */
     private void writeToFile(String file, ArrayList<String> content) {
         try {
             // Assume default encoding.
@@ -209,6 +238,12 @@ public class FireJavaLog {
 
     }
 
+    /**
+     * Return file line by line in arrayList<String>
+     * 
+     * @param file filename
+     * @return file line by line in arrayList<String>
+     */
     private ArrayList<String> readFromFile(String file) {
         //file content
         ArrayList<String> content = new ArrayList<>();
@@ -238,17 +273,26 @@ public class FireJavaLog {
         return content;
     }
 
+    /**
+     * Connect to database by jdbc and fill this.con 
+     * 
+     * @throws SQLException 
+     */
     private void connectToDatabase() throws SQLException {
         try {
             //connect to database
             this.con = DriverManager.getConnection("jdbc:mysql://" + this.databaseHost + ":3306/" + this.databaseDatabase, databaseUser, databasePass);
-           
-            
+
         } catch (SQLException ex) {
-            throw ex;    
+            throw ex;
         }
     }
 
+    /**
+     * Disconnect from database
+     * 
+     * @throws SQLException 
+     */
     private void disconnectFromDatabase() throws SQLException {
         try {
             this.con.close();
@@ -257,6 +301,10 @@ public class FireJavaLog {
         }
     }
 
+    /**
+     * Log temp file to database
+     * 
+     */
     private void logTempFileToDatabase() {
         File f = new File(this.tempLogFile);
         if (f.exists() && !f.isDirectory()) {
@@ -275,17 +323,28 @@ public class FireJavaLog {
         }
     }
 
-    private void emptyFile(String filename) {
+    /**
+     * Empty file
+     * 
+     * @param filename filename
+     */
+    public void emptyFile(String filename) {
         FileWriter fileWriter;
         try {
-            fileWriter = new FileWriter(filename, true);
+            fileWriter = new FileWriter(filename);
+            fileWriter.write("");
             fileWriter.close();
         } catch (IOException ex) {
             this.log(ex.getMessage(), FireJavaLog.L_SEVERE, FireJavaLog.T_LOGTOTEMPFILE);
         }
     }
 
-    private String timeInMysqlFormat() {
+    /**
+     * Return now date in MysqlFormat
+     * 
+     * @return now date in MysqlFormat
+     */
+    public String timeInMysqlFormat() {
         //prepare date format
         SimpleDateFormat formatMysql = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         GregorianCalendar gcNow = new GregorianCalendar();

@@ -4,7 +4,6 @@ FireJavaLog is little library in Java to help you logging all errors and stuff i
 
 # Work in progress !
 
-## Todo
-  - Add procedure to write temp file to database
+## Todo v0.5
   - Add console log
   - Add color to console
